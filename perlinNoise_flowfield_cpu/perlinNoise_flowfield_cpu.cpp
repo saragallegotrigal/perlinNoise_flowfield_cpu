@@ -6,6 +6,11 @@
 #include <algorithm> //shiffle, iota
 #include <numeric>
 
+//medir tiempo:
+#include <chrono>
+#include <iostream>
+
+
 // ------------------------ Perlin Noise (Improved + Fractal) ------------------------
 struct Perlin3D {
     std::vector<int> p;
@@ -195,6 +200,7 @@ int main() {
     // Se crea la ventana con (alto, ancho)
     sf::RenderWindow window(sf::VideoMode({ WIDTH, HEIGHT }), "Flow Field C++");
     window.setFramerateLimit(60); // se limita a 60 FPS
+    window.setVerticalSyncEnabled(false); // desactiva VSync
 
     // Se crea un rectángulo que no borra la pantalla por completo, blanco con alpha = 10. Se dibuja encima cada frame,
     // y hace que los trazos viejos de desvanezcan poco a poco
@@ -205,7 +211,7 @@ int main() {
     // que guarda la dirección que seguirán las partículas
     std::vector<sf::Vector2f> flowfield(flowCount);
 
-    const int N = 2500; //número de partículas
+    const int N = 1000; //número de partículas: 2500, 5000, 
     std::mt19937 rng(42); //generador de números aleatorios con semilla fija = 42
     std::uniform_real_distribution<float> rx(0.f, (float)WIDTH); //posición x aleatoria
     std::uniform_real_distribution<float> ry(0.f, (float)HEIGHT); //posición y aleatoria
@@ -220,6 +226,12 @@ int main() {
     Perlin3D perlin(1337); //semilla para perlin noise
     float zoff = 0.f; // tiempo -> si se cambia, el campo se mueve; si no -> el flowfield queda fijo
 
+    //para medir tiempo:
+    const int MAX_FRAMES = 1000; //número máximo de iteraciones (frames)
+    int frameCount = 0; //contador de iteraciones (frames)
+
+    using clock = std::chrono::high_resolution_clock; //declaración del reloj
+    auto startTime = clock::now(); //inicio tiempo
 
     // loop principal -> mientras la ventana esté activa (abierta)
     while (window.isOpen()) {
@@ -304,7 +316,26 @@ int main() {
         // dibujar una a una)
         window.display(); //se muestra el frame por pantalla con lo dibujado en window.draw
 
+        //contador de tiempo
+        frameCount++; //se aumenta en uno el contador de iteraciones (frames)
+
+        //Si se ha llegado al número máximo de iteraciones, se cierra la ventana
+        if (frameCount >= MAX_FRAMES) {
+            window.close();
+        }
+
     }
 
-    return 0;
+    auto endTime = clock::now(); //tiempo final
+    std::chrono::duration<double> elapsed = endTime - startTime; //tiempo transcurrido
+
+    //Impresión por pantalla datos
+    std::cout << "Particles: " << N << "\n";
+    std::cout << "Flowfield: " << cols << " x " << rows << "\n";
+    std::cout << "Frames: " << frameCount << "\n";
+    std::cout << "Total time (s): " << elapsed.count() << "\n";
+    std::cout << "Time per frame (ms): " << (elapsed.count() * 1000.0 / frameCount) << "\n\n";
+
+
+    return 0; //fin del programa
 }
