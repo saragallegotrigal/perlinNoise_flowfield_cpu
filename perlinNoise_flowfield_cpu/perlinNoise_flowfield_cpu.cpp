@@ -5,6 +5,9 @@
 #include <cmath> //sin, cos, sqrt, floor
 #include <algorithm> //shiffle, iota
 #include <numeric>
+#include <filesystem>
+
+#include <fstream>
 
 //medir tiempo:
 #include <chrono>
@@ -192,15 +195,25 @@ int main() {
     const int HEIGHT = 540; //alto de la ventana
     const float inc = 0.1f; //cuánto se avanza en el espacio del ruido
     // (más pequeño -> ruido más suave y curvas más fluidas; más grande -> ruido más brusco con cambios más fuertes)
-    const float scl = 10.f; //tamaño de cada celda del flowfield en píxeles -> cada vector del flowfield controla un cuadrado de 10x10 píxeles
+    const float scl = 10.f; //tamaño de cada celda del flowfield en píxeles -> cada vector del flowfield controla un cuadrado de nxn píxeles: 5, 10, 15, 20, 30
     const int cols = (int)std::floor(WIDTH / scl); //número de columnas redondeado hacia abajo: floor(960/10)
     const int rows = (int)std::floor(HEIGHT / scl); //número de filas redondeado hacia abajo: floor(540/10)
     const size_t flowCount = (size_t)cols * (size_t)rows; //número total de vectores del flowfield (filas*columnas)
 
+    /*
+    std::cout << SFML_VERSION_MAJOR << "."
+        << SFML_VERSION_MINOR << "."
+        << SFML_VERSION_PATCH << std::endl;
+    */
+
     // Se crea la ventana con (alto, ancho)
     sf::RenderWindow window(sf::VideoMode({ WIDTH, HEIGHT }), "Flow Field C++");
-    window.setFramerateLimit(60); // se limita a 60 FPS
+    //window.setFramerateLimit(60); // se limita a 60 FPS
     window.setVerticalSyncEnabled(false); // desactiva VSync
+
+    // Declaración de variables para frame rate en ventana
+    sf::Clock fpsClock;
+    float updateTimer = 0.f;
 
     // Se crea un rectángulo que no borra la pantalla por completo, blanco con alpha = 10. Se dibuja encima cada frame,
     // y hace que los trazos viejos de desvanezcan poco a poco
@@ -211,7 +224,7 @@ int main() {
     // que guarda la dirección que seguirán las partículas
     std::vector<sf::Vector2f> flowfield(flowCount);
 
-    const int N = 1000; //número de partículas: 2500, 5000, 
+    const int N = 5000; //número de partículas: 100, 1000, 5000, 10000, 20000, 50000
     std::mt19937 rng(42); //generador de números aleatorios con semilla fija = 42
     std::uniform_real_distribution<float> rx(0.f, (float)WIDTH); //posición x aleatoria
     std::uniform_real_distribution<float> ry(0.f, (float)HEIGHT); //posición y aleatoria
@@ -233,8 +246,26 @@ int main() {
     using clock = std::chrono::high_resolution_clock; //declaración del reloj
     auto startTime = clock::now(); //inicio tiempo
 
+
     // loop principal -> mientras la ventana esté activa (abierta)
     while (window.isOpen()) {
+
+        //Frame rate
+        float deltaTime = fpsClock.restart().asSeconds();
+        updateTimer += deltaTime;
+
+        if (updateTimer >= 0.2f) { // Actualizar solo cada 200ms
+            updateTimer = 0.f;
+            int fpsValue = static_cast<int>(1.f / (deltaTime + 1e-9f));
+
+            // Construimos el string de forma segura
+            std::string fpsStr = "Flow Field C++ | FPS: " + std::to_string(fpsValue);
+
+            // SFML 3.0: Usamos explícitamente u8string o el constructor de sf::String
+            // Esto evita que el compilador use punteros temporales inválidos
+            window.setTitle(sf::String::fromUtf8(fpsStr.begin(), fpsStr.end()));
+        }
+
 
         // Cierre de ventana
         //sf::Event event;
@@ -242,6 +273,7 @@ int main() {
             if (event->is<sf::Event::Closed>()) window.close();
         }
 
+        //METER EN MÉTODO CPU PARA HACER GPU
         // --- Generación del Flow Field ---
         float yoff = 0.f; //coordenada y en el ruido perlin
 
@@ -255,8 +287,8 @@ int main() {
                 // mitad de influencia que la anterior)
                 float n = perlin.noise(xoff, yoff, zoff, 4, 0.5f);
 
-                float angle = n * 6.28318530718f * 4.f; //se convierte el ruido en un ángulo (2? = 6.28318; *4 para más
-                // giros y curvas). Así, angle es un ángulo en radianes: 0 ? derecha, ?/2 ? abajo, ? ? izquierda y 3?/2 ? arriba
+                float angle = n * 6.28318530718f * 4.f; //se convierte el ruido en un ángulo (2pi = 6.28318; *4 para más
+                // giros y curvas). Así, angle es un ángulo en radianes: 0 pi derecha, pi/2 pi abajo, pi pi izquierda y 3pi/2 pi arriba
                 sf::Vector2f v(std::cos(angle), std::sin(angle)); //vector con la dirección del viento en
                 // esa celda del flow field (cos es cuánto apunta en X, sin es cuánto apunta en Y)
                 // NOTA: setMag(1) está implícito porque cos/sin crean vector unitario (que siempre tienen longitud 1)
@@ -314,16 +346,17 @@ int main() {
 
         window.draw(lines); //Se dibujan todas las líneas de todas las partículas de golpe (más eficiente que
         // dibujar una a una)
+        //window.draw(fpsText); //Se muestra el frame rate
         window.display(); //se muestra el frame por pantalla con lo dibujado en window.draw
 
         //contador de tiempo
         frameCount++; //se aumenta en uno el contador de iteraciones (frames)
 
+        
         //Si se ha llegado al número máximo de iteraciones, se cierra la ventana
         if (frameCount >= MAX_FRAMES) {
             window.close();
         }
-
     }
 
     auto endTime = clock::now(); //tiempo final
