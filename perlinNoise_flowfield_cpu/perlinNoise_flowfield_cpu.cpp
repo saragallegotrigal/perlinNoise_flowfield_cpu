@@ -5,9 +5,6 @@
 #include <cmath> //sin, cos, sqrt, floor
 #include <algorithm> //shiffle, iota
 #include <numeric>
-#include <filesystem>
-
-#include <fstream>
 
 //medir tiempo:
 #include <chrono>
@@ -176,8 +173,8 @@ struct Particle {
         int x = (int)std::floor(pos.x / scl); //fila
         int y = (int)std::floor(pos.y / scl); //columna
 
-        // Clamp para evitar seg faults si la partícula toca el borde exacto
-        // 3. Se comprueba que las coordenadas estén dentro del número de filas y columnas del flowfield
+        // 3. Clamp para evitar seg faults si la partícula toca el borde exacto
+        // Se comprueba que las coordenadas estén dentro del número de filas y columnas del flowfield
         if (x >= cols) x = cols - 1;
         if (y >= rows) y = rows - 1;
         // Si son coordenadas negativas, se establecen como cero
@@ -188,6 +185,40 @@ struct Particle {
         return x + y * cols;
     }
 };
+
+//Función flowfield en CPU
+void flowfield_cpu(Perlin3D& perlin, const float inc, const int cols, const int rows, std::vector<sf::Vector2f>& flowfield, float& zoff) {
+    // --- Generación del Flow Field ---
+    float yoff = 0.f; //coordenada y en el ruido perlin
+
+    //Recorremos la rejilla FILA A FILA
+    for (int y = 0; y < rows; ++y) {
+        float xoff = 0.f; //coordenada x en el ruido perlin
+        //dentro de cada FILA, recorremos cada COLUMNA
+        for (int x = 0; x < cols; ++x) {
+            // n es un valor entre 0 y 1 (lo devuelve la función perlin.noise(), con el punto actual y con un número
+            // de octavas = 4 (capas que van añadiendo detalle), con 0,5 de persistencia (las capas van teniendo la
+            // mitad de influencia que la anterior)
+            float n = perlin.noise(xoff, yoff, zoff, 4, 0.5f);
+
+            float angle = n * 6.28318530718f * 4.f; //se convierte el ruido en un ángulo (2pi = 6.28318; *4 para más
+            // giros y curvas). Así, angle es un ángulo en radianes: 0 pi derecha, pi/2 pi abajo, pi pi izquierda y 3pi/2 pi arriba
+            sf::Vector2f v(std::cos(angle), std::sin(angle)); //vector con la dirección del viento en
+            // esa celda del flow field (cos es cuánto apunta en X, sin es cuánto apunta en Y)
+            // NOTA: setMag(1) está implícito porque cos/sin crean vector unitario (que siempre tienen longitud 1)
+
+            //Guardamos el vector en el array 1D
+            flowfield[x + y * cols] = v;
+
+            //Avanzamos en el ruido en x
+            xoff += inc;
+        }
+        //Avanzamos en el ruido en y
+        yoff += inc;
+    }
+    //Avanzamos el tiempo para animar lentamente el flowfield
+    zoff += 0.0003f;
+}
 
 // Función principal
 int main() {
@@ -273,37 +304,10 @@ int main() {
             if (event->is<sf::Event::Closed>()) window.close();
         }
 
-        //METER EN MÉTODO CPU PARA HACER GPU
         // --- Generación del Flow Field ---
-        float yoff = 0.f; //coordenada y en el ruido perlin
 
-        //Recorremos la rejilla FILA A FILA
-        for (int y = 0; y < rows; ++y) {
-            float xoff = 0.f; //coordenada x en el ruido perlin
-            //dentro de cada FILA, recorremos cada COLUMNA
-            for (int x = 0; x < cols; ++x) {
-                // n es un valor entre 0 y 1 (lo devuelve la función perlin.noise(), con el punto actual y con un número
-                // de octavas = 4 (capas que van añadiendo detalle), con 0,5 de persistencia (las capas van teniendo la
-                // mitad de influencia que la anterior)
-                float n = perlin.noise(xoff, yoff, zoff, 4, 0.5f);
-
-                float angle = n * 6.28318530718f * 4.f; //se convierte el ruido en un ángulo (2pi = 6.28318; *4 para más
-                // giros y curvas). Así, angle es un ángulo en radianes: 0 pi derecha, pi/2 pi abajo, pi pi izquierda y 3pi/2 pi arriba
-                sf::Vector2f v(std::cos(angle), std::sin(angle)); //vector con la dirección del viento en
-                // esa celda del flow field (cos es cuánto apunta en X, sin es cuánto apunta en Y)
-                // NOTA: setMag(1) está implícito porque cos/sin crean vector unitario (que siempre tienen longitud 1)
-
-                //Guardamos el vector en el array 1D
-                flowfield[x + y * cols] = v;
-
-                //Avanzamos en el ruido en x
-                xoff += inc;
-            }
-            //Avanzamos en el ruido en y
-            yoff += inc;
-        }
-        //Avanzamos el tiempo para animar lentamente el flowfield
-        zoff += 0.0003f;
+        //Generación en CPU
+        flowfield_cpu(perlin, inc, cols, rows, flowfield, zoff);
 
         // Dibujar estela, haciendo desaparecer lo antiguo poco a poco
         window.draw(fadeRect);
@@ -352,11 +356,12 @@ int main() {
         //contador de tiempo
         frameCount++; //se aumenta en uno el contador de iteraciones (frames)
 
-        
+        /*
         //Si se ha llegado al número máximo de iteraciones, se cierra la ventana
         if (frameCount >= MAX_FRAMES) {
             window.close();
         }
+        */
     }
 
     auto endTime = clock::now(); //tiempo final
